@@ -87,8 +87,8 @@ const create_employee = async (req, res) => {
 
 //       // Update employee details
 //       const updateSql = `
-//         UPDATE t_employee 
-//         SET f_Name = ?, f_Email = ?, f_Mobile = ?, f_Designation = ?, f_Gender = ?, f_Course = ?, f_Image = ? 
+//         UPDATE t_employee
+//         SET f_Name = ?, f_Email = ?, f_Mobile = ?, f_Designation = ?, f_Gender = ?, f_Course = ?, f_Image = ?
 //         WHERE f_id = ?
 //       `;
 //       connection.query(
@@ -117,79 +117,101 @@ const create_employee = async (req, res) => {
 //     });
 //   }
 // };
+const handleUploadImage = async (req) => {
+  if (req.files && req.files.image) {
+    const imageFile = req.files.image;
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(imageFile.name); // Get file extension
+    const destinationPath = path.join("uploads/", uniqueSuffix + ext);
+    await fs.promises.rename(imageFile.tempFilePath, destinationPath);
+    return { status: 'success', destinationPath };
+  } else {
+    return { status: 'fail', destinationPath: '' };
+  }
+};
+
+
 const update_employee = async (req, res) => {
   try {
     const { f_id } = req.params;
     const { name, email, mobile, designation, gender, course } = req.body;
-    console.log(req.body);
+    let filePath;
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
+    if (req.files && req.files.image) {
+      const uploadFile = await handleUploadImage(req); 
+      if (uploadFile.status === 'fail' || uploadFile.destinationPath=='') {
+        return res.status(400).json({
+          status: 'fail',
+          message: 'Failed to upload image',
+        });
+      }
+      filePath = uploadFile.destinationPath;
+    }
+      
 
-    const imageFile = req.files.image;
-    console.log(imageFile)
-    return;
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(req.files.image.name); // Get file extension
-    const destinationPath = path.join("uploads/", uniqueSuffix + ext);
-    await fs.promises.rename(imageFile.tempFilePath, destinationPath);
-
-    const checkSql = 'SELECT * FROM t_employee WHERE f_id = ?';
+    const checkSql = "SELECT * FROM t_employee WHERE f_id = ?";
     connection.query(checkSql, [f_id], (err, result) => {
       if (err) {
         return res.status(500).json({
-          status: 'fail',
-          message: 'Internal Server Error',
+          status: "fail",
+          message: "Internal Server Error",
         });
       }
-      
+
       if (result.length === 0) {
         return res.status(404).json({
-          status: 'fail',
-          message: 'Employee not found',
+          status: "fail",
+          message: "Employee not found",
         });
       }
 
       // Update employee details
-      const updateSql = `
-        UPDATE t_employee 
-        SET f_Name = ?, f_Email = ?, f_Mobile = ?, f_Designation = ?, f_Gender = ?, f_Course = ?
-        WHERE f_id = ?
-      `;
-     
+      let updateSql;
+      if(filePath){
+        updateSql = `
+          UPDATE t_employee 
+          SET f_Name = ?, f_Email = ?, f_Mobile = ?, f_Designation = ?, f_Gender = ?, f_Course = ?, f_Image = ?
+          WHERE f_id = ?
+        `;
+      }else{
+        updateSql = `
+          UPDATE t_employee 
+          SET f_Name = ?, f_Email = ?, f_Mobile = ?, f_Designation = ?, f_Gender = ?, f_Course = ?
+          WHERE f_id = ?
+        `;
+      }
+      
 
       connection.query(
         updateSql,
-        [name, email, mobile, designation, gender, course, f_id],
+        filePath ? [name, email, mobile, designation, gender, course, filePath, f_id]: [name, email, mobile, designation, gender, course, f_id],
         (err, result) => {
-          console.log(result);
-          if (err)
-           {
+          if (err) {
             return res.status(500).json({
-              status: 'fail',
-              message: 'Internal Server Error',
-
+              status: "fail",
+              message: "Internal Server Error",
             });
-            
           }
-          
+
           res.json({
-            status: 'success',
-            message: 'Employee updated successfully',
-            result
+            status: "success",
+            message: "Employee updated successfully",
+            result,
           });
         }
       );
     });
   } catch (error) {
+    console.log(error);
     res.status(500).json({
-      status: 'fail',
-      message: 'Failed to update employee',
+      status: "fail",
+      message: "Failed to update employee",
     });
   }
 };
-
 
 const fetch_employee = async (req, res) => {
   try {
@@ -210,7 +232,6 @@ const fetch_employee = async (req, res) => {
       const countSql = "SELECT COUNT(*) AS total FROM t_employee";
 
       connection.query(countSql, (err, countResult) => {
-        console.log(countResult);
         if (err) {
           return res.status(500).json({
             status: "fail",
@@ -219,7 +240,6 @@ const fetch_employee = async (req, res) => {
         }
 
         const totalRecords = countResult[0].total;
-        console.log(totalRecords);
         const totalPages = Math.ceil(totalRecords / pageSize);
 
         res.json({
@@ -243,4 +263,53 @@ const fetch_employee = async (req, res) => {
   }
 };
 
-module.exports = { create_employee, fetch_employee, update_employee };
+const delete_employee = async (req, res) => {
+  try {
+    const { f_id } = req.params;
+
+    const checkSql = "SELECT * FROM t_employee WHERE f_id = ?";
+    connection.query(checkSql, [f_id], (err, result) => {
+      if (err) {
+        return res.status(500).json({
+          status: "fail",
+          message: "Internal Server Error",
+        });
+      }
+
+      if (result.length === 0) {
+        return res.status(404).json({
+          status: "fail",
+          message: "Employee not found",
+        });
+      }
+
+      // Delete employee
+      const deleteSql = "DELETE FROM t_employee WHERE f_id = ?";
+      connection.query(deleteSql, [f_id], (err, result) => {
+        if (err) {
+          return res.status(500).json({
+            status: "fail",
+            message: "Internal Server Error",
+          });
+        }
+
+        res.json({
+          status: "success",
+          message: "Employee deleted successfully",
+        });
+      });
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "fail",
+      message: "Failed to delete employee",
+    });
+  }
+};
+
+module.exports = {
+  create_employee,
+  fetch_employee,
+  update_employee,
+  delete_employee,
+};

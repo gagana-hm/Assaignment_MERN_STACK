@@ -10,7 +10,9 @@ router.post(
   employeeSchema,
   employeeController.create_employee
 );
+
 router.put("/:f_id", employeeController.update_employee); // image upload mechanism
 router.get("/", employeeController.fetch_employee);
+router.delete("/:f_id", employeeController.delete_employee);
 
 module.exports = router;
